@@ -1,0 +1,101 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recovery Lab</title>
+<link rel="stylesheet" href="{% static 'viz/app.css' %}?v={{ v }}">
+</head>
+<body>
+
+<!-- ============================== editor ============================== -->
+<section id="editor" class="editor">
+  <header class="ed-head">
+    <h1>PostgreSQL Recovery Lab</h1>
+    <p>Write a scenario. It runs for real on a fresh PostgreSQL cluster, one step per click.</p>
+  </header>
+  <div class="ed-grid">
+    <textarea id="script" spellcheck="false" autocomplete="off">{{ example }}</textarea>
+    <aside class="syntax">
+      <h3>How to write it</h3>
+      <dl>
+        <dt><code>T1: INSERT …;</code></dt>
+        <dd>Runs in session <b>T1</b>. Every name is its own connection, so T1 can stay open while others run.</dd>
+        <dt><code>CHECKPOINT;</code></dt>
+        <dd>No name: runs in a one-off session.</dd>
+        <dt><code>crash</code></dt>
+        <dd>Kills the server (immediate shutdown). The next clicks step through the real recovery, paused in gdb.</dd>
+        <dt><code>-- note</code></dt>
+        <dd>A caption shown with the next step.</dd>
+      </dl>
+      <p class="muted">Statements end with <code>;</code> and may span several lines.</p>
+      <button id="example" class="link" type="button">Reset to the example</button>
+    </aside>
+  </div>
+  <footer class="ed-foot">
+    <span id="ed-error" class="err" role="alert"></span>
+    <button id="run" class="btn primary" type="button">Run scenario →</button>
+  </footer>
+</section>
+
+<!-- ============================== viewer ============================== -->
+<section id="viewer" class="viewer" hidden>
+  <header class="bar">
+    <button id="edit" class="btn ghost" type="button">← Edit scenario</button>
+    <span id="server" class="server"></span>
+    <span class="spacer"></span>
+    <span id="count" class="count"></span>
+    <button id="prev" class="btn" type="button" title="Back (←)">◀ Back</button>
+    <button id="next" class="btn primary" type="button" title="Next (→ or Space)">Next ▶</button>
+  </header>
+
+  <div class="layout">
+    <aside class="side">
+      <h4>Scenario</h4>
+      <ol id="lines" class="lines"></ol>
+    </aside>
+
+    <main class="main">
+      <section class="story">
+        <p id="caption" class="caption"></p>
+        <h2 id="title"></h2>
+        <p id="tip" class="tip"></p>
+        <ul id="changes" class="changes"></ul>
+        <div class="story-foot">
+          <code id="code" class="codepath"></code>
+          <details id="outbox"><summary>psql / server output</summary><pre id="output"></pre></details>
+        </div>
+      </section>
+
+      <div class="panels">
+        <section class="panel table-panel">
+          <header>
+            <h3>Table</h3>
+            <span class="legend">
+              <span class="chip on">WAL</span>/<span class="chip on">DISK</span> safely on disk
+              <span class="chip pend">WAL</span>/<span class="chip pend">DISK</span> only in memory
+            </span>
+          </header>
+          <div id="tables" class="body"></div>
+        </section>
+
+        <section class="panel">
+          <header><h3>WAL</h3><span class="legend">newest at the bottom</span></header>
+          <div id="wal" class="body wal"></div>
+          <footer id="walnote" class="note"></footer>
+        </section>
+
+        <section class="panel">
+          <header><h3>CLOG</h3><span class="legend">00 running · 01 committed · 10 aborted</span></header>
+          <div id="clog" class="body"></div>
+          <footer class="note">“Memory” is the CLOG cache in shared memory; “disk” is the <code>pg_xact</code> file.</footer>
+        </section>
+      </div>
+    </main>
+  </div>
+  <div id="busy" class="busy" hidden><span></span></div>
+</section>
+
+<script src="{% static 'viz/app.js' %}?v={{ v }}"></script>
+</body>
+</html>
