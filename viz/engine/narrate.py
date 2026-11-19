@@ -109,6 +109,29 @@ def clog_view(run, state, prev):
     return out
 
 
+def procarray_view(run, state, prev):
+    raw = state.get("procarray", {"source": "unavailable", "entries": []})
+    previous = {p["pid"]: p for p in (prev or {}).get("procarray", {}).get("entries", [])}
+    entries = []
+    for proc in sorted(raw["entries"], key=lambda p: p["pid"]):
+        row = dict(proc)
+        row["name"] = row.pop("app", "backend").removeprefix("viz:")
+        old = previous.get(row["pid"])
+        fields = ("xid", "xmin", "state", "wait", "wait_type")
+        row["chg"] = prev is not None and (old is None or any(old.get(k) != row.get(k) for k in fields))
+        entries.append(row)
+    notes = {
+        "activity": "Scenario sessions only, via pg_stat_activity backend_xid/backend_xmin. "
+                    "This is a projection of backend state, not a full ProcArray dump; inspector and background processes are omitted.",
+        "wiped": "Shared memory was lost in the crash. The old ProcArray has no surviving entries and no on-disk copy.",
+        "gdb": "Actual ProcArray entries read through GDB in the new single-user recovery process. "
+               "Replaying a transaction's WAL does not recreate its old session.",
+        "uninitialized": "The new process has not initialized ProcArray yet.",
+        "unavailable": "ProcArray could not be read at this recovery stop.",
+    }
+    return dict(raw, entries=entries, note=notes.get(raw["source"], ""))
+
+
 # ------------------------------------------------------------------ table rows
 STATUS_TEXT = {
     "live": "committed",
@@ -303,11 +326,11 @@ def tip(info, view, run):
     k = info["kind"]
     rec = info.get("record")
     if k == "init":
-        return ("Three places to watch: the table (page in memory vs. the table file on disk), the WAL "
-                "(in memory vs. flushed to disk) and the CLOG (commit status of each transaction).", "")
+        return ("Four places to watch: the table (page in memory vs. the table file on disk), the WAL "
+                "(in memory vs. flushed to disk), the CLOG (commit status) and ProcArray (current backend transaction state).", "")
     if k == "crash":
         return ("Immediate shutdown: no shutdown checkpoint. Shared buffers, WAL buffers and the in-memory CLOG "
-                "are gone. What survives: the table file, pg_xact and the WAL that was flushed.",
+                "and ProcArray are gone. What survives: the table file, pg_xact and the WAL that was flushed.",
                 "pg_ctl stop -m immediate → SIGQUIT")
     if k == "restart":
         return ("pg_control says the server didn't shut down cleanly, so the startup process replays WAL starting "
@@ -353,7 +376,7 @@ def tip(info, view, run):
         return ("This statement is waiting for a lock held by another open transaction. It will finish once "
                 "that transaction ends.", "")
     if v in ("BEGIN", "START"):
-        return ("BEGIN only opens a transaction block. A transaction id (xid) is assigned at the first write.", "")
+        return ("BEGIN opens a transaction block; its backend appears with no xid yet. An xid is usually assigned at the first write.", "")
     if v in ("COMMIT", "END"):
         return ("COMMIT writes a commit record and waits until the WAL is flushed to disk; then the CLOG marks "
                 "the transaction committed. The table page itself can stay in memory: the WAL makes it durable.",
@@ -452,6 +475,7 @@ def build_view(run, state, info, prev):
         "lsn": {"insert": L(state["insert"]), "flush": L(state["flush"]), "redo": L(state["redo"])},
         "tables": tables, "wal": wal, "wal_hidden": run.hidden,
         "clog": clog_view(run, state, prev), "select": select,
+        "procarray": procarray_view(run, state, prev),
         "labels": run.labels,
     }
     view["changes"] = changes(run, view, prev, info)

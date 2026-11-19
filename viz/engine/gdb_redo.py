@@ -81,6 +81,27 @@ def read_pages():
     return out
 
 
+def read_procarray():
+    """Read the actual new ProcArray while the single-user backend is paused."""
+    try:
+        array = val("'procarray.c'::procArray")
+        if not int(array):
+            return {"source": "uninitialized", "entries": []}
+        procs = val("ProcGlobal->allProcs")
+        entries = []
+        for i in range(int(array["numProcs"])):
+            procno = int(array["pgprocnos"][i])
+            proc = procs[procno]
+            entries.append({"pid": int(proc["pid"]), "procno": procno,
+                            "xid": int(proc["xid"]) or None,
+                            "xmin": int(proc["xmin"]) or None,
+                            "app": "single-user recovery", "state": "paused in recovery"})
+        return {"source": "gdb", "entries": entries}
+    except Exception as e:
+        # An unavailable optional panel must not prevent WAL recovery stepping.
+        return {"source": "unavailable", "entries": [], "error": str(e)}
+
+
 def read_clog():
     """Raw 2-bit status of each interesting xid in the in-memory CLOG (None = page not loaded)."""
     shared = val("'clog.c'::XactSlruDesc.shared")
@@ -162,7 +183,7 @@ def on_start():
     ckpt = int(val("'xlog.c'::ControlFile->checkPoint"))
     state = int(val("'xlog.c'::ControlFile->state"))
     emit({"event": "start", "redo": redo, "checkpoint": ckpt, "dbstate": state,
-          "pages": read_pages(), "clog": read_clog()})
+          "pages": read_pages(), "clog": read_clog(), "procarray": read_procarray()})
     wait_next()
 
 
@@ -173,7 +194,7 @@ def on_applied():
         skipped += 1
         return
     emit({"event": "applied", "record": rec, "skipped_before": skipped,
-          "pages": read_pages(), "clog": read_clog()})
+          "pages": read_pages(), "clog": read_clog(), "procarray": read_procarray()})
     skipped = 0
     wait_next()
 
@@ -182,7 +203,7 @@ def on_redo_done():
     global eor_armed
     eor_armed = True
     emit({"event": "redo_done", "last": int(val("xlogreader->ReadRecPtr")),
-          "skipped_before": skipped, "pages": read_pages(), "clog": read_clog()})
+          "skipped_before": skipped, "pages": read_pages(), "clog": read_clog(), "procarray": read_procarray()})
     wait_next()
 
 
@@ -193,7 +214,7 @@ def on_eor():
     eor_armed = False
     emit({"event": "eor", "redo": int(val("'xlog.c'::ControlFile->checkPointCopy.redo")),
           "checkpoint": int(val("'xlog.c'::ControlFile->checkPoint")),
-          "pages": read_pages(), "clog": read_clog()})
+          "pages": read_pages(), "clog": read_clog(), "procarray": read_procarray()})
     wait_next()
 
 

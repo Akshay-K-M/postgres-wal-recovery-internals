@@ -2,7 +2,7 @@
 
 A local web app that runs a scenario you type against a fresh PostgreSQL
 cluster, one step per click, and shows the table pages, the WAL and the CLOG
-after every step. A `crash` line kills the server; the following clicks step
+after every step, alongside a ProcArray panel. A `crash` line kills the server; the following clicks step
 through the **real** crash recovery: PostgreSQL runs in single-user mode under
 gdb and pauses after every relevant WAL record it replays.
 
@@ -31,6 +31,11 @@ running cluster.
 * Table pages "in memory" come from `get_raw_page` (or, during recovery, from
   the buffer pool read by gdb). Pages "on disk" are read straight from the
   table file.
+* ProcArray shows scenario sessions via `pg_stat_activity` (PID, backend xid,
+  backend xmin, state and wait). This is a filtered projection, not a full raw
+  ProcArray dump. During recovery it reads actual ProcArray/PGPROC entries
+  through gdb. The crash wipes the old array; WAL replay does not restore old
+  sessions. An idle session can remain connected after its xid is cleared.
 * CLOG "memory" is `pg_xact_status()` (during recovery: the raw bits of the
   in-memory CLOG, read by gdb). CLOG "disk" is read from the `pg_xact` file.
 * WAL records come from `pg_walinspect`, which can only read flushed WAL.

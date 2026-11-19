@@ -52,7 +52,9 @@ SELECT json_build_object(
       'pages', (SELECT json_agg(encode(get_raw_page(rels.oid::regclass::text, b), 'base64') ORDER BY b)
                 FROM generate_series(0, least(nblocks, %d) - 1) b)
     ) ORDER BY relname) FROM rels), '[]'::json),
-  'activity', (SELECT json_agg(json_build_object('app', application_name, 'xid', backend_xid::text::bigint))
+  'activity', (SELECT json_agg(json_build_object('app', application_name, 'pid', pid, 'xid', backend_xid::text::bigint,
+                   'xmin', backend_xmin::text::bigint, 'state', state,
+                   'wait_type', wait_event_type, 'wait', wait_event))
                FROM pg_stat_activity WHERE application_name LIKE 'viz:%%')
 );
 """ % MAXPAGES
@@ -294,7 +296,8 @@ class Run:
             if a["xid"]:
                 self._name(a["xid"], a["app"][4:])
         state = {"server": "up", "insert": lsn(meta["insert"]), "flush": lsn(meta["flush"]),
-                 "redo": lsn(meta["redo"]), "ckpt": lsn(meta["ckpt"]), "pages": pages}
+                 "redo": lsn(meta["redo"]), "ckpt": lsn(meta["ckpt"]), "pages": pages,
+                 "procarray": {"source": "activity", "entries": meta["activity"] or []}}
         self._fetch_wal(state["flush"])
         xids = self._interesting(pages)
         # a step's brand-new xids belong to the session that ran it
@@ -313,7 +316,8 @@ class Run:
         state = {"server": "down", "insert": before["flush"], "flush": before["flush"],
                  "redo": lsn(ctl.get("Latest checkpoint's REDO location")),
                  "ckpt": lsn(ctl.get("Latest checkpoint location")), "pages": pages, "visible": None,
-                 "clog": self._clog(before["clog"].keys(), mem=False)}
+                 "clog": self._clog(before["clog"].keys(), mem=False),
+                 "procarray": {"source": "wiped", "entries": []}}
         self.state = state
         return state
 
@@ -329,7 +333,8 @@ class Run:
             if int(x) in clog:
                 clog[int(x)]["raw"] = bits
         state = {"server": "recovering", "insert": prev["insert"], "flush": prev["flush"],
-                 "redo": prev["redo"], "ckpt": prev["ckpt"], "pages": pages, "visible": None, "clog": clog}
+                 "redo": prev["redo"], "ckpt": prev["ckpt"], "pages": pages, "visible": None, "clog": clog,
+                 "procarray": ev.get("procarray", {"source": "unavailable", "entries": []})}
         self.state = state
         return state
 

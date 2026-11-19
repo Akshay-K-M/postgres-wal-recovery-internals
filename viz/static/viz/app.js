@@ -84,6 +84,7 @@ function show(data) {
   renderTables(v);
   renderWal(v);
   renderClog(v);
+  renderProcArray(v);
 }
 
 function renderLines(script, line, kind) {
@@ -167,4 +168,20 @@ function renderClog(v) {
       ${cell(c.mem, "mem")}${cell(c.disk, "disk")}</tr>` +
       (c.lag ? `<tr><td></td><td colspan="2" class="cell"><small class="lag">memory is ahead of the pg_xact file</small></td></tr>` : "")).join("") +
     "</tbody></table>";
+}
+
+function renderProcArray(v) {
+  const p = v.procarray || {entries: [], source: "unavailable"};
+  const entries = p.entries.filter(r => r.xid != null);
+  const empty = p.source === "wiped" ? "Crash: the old ProcArray is gone." :
+    p.source === "unavailable" ? "ProcArray unavailable. Start a new scenario." :
+    p.source === "uninitialized" ? "ProcArray not initialized yet." :
+    "No running scenario transactions with an assigned XID.";
+  const rows = entries.map(r => `<tr class="${r.chg ? "chg-chg" : ""}">
+    <td class="xid">${esc(r.pid)}</td><td class="xid">${esc(r.xid)}</td></tr>`).join("");
+  $("procarray").innerHTML = rows ? `<table class="clog"><thead><tr>
+    <th>PID</th><th>XID</th>
+    </tr></thead><tbody>${rows}</tbody></table>` : `<p class="empty">${empty}</p>`;
+  $("procarray-note").textContent =
+    "Only assigned transaction IDs are shown. After crash recovery: no COMMIT + no running transaction = treated as aborted, even if CLOG still says 00 (in progress).";
 }

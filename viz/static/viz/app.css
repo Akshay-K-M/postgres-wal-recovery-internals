@@ -195,3 +195,6 @@ tr.chg-new td, tr.chg-chg td { animation: hl 2.2s ease-out; }
   .panels, .ed-grid { grid-template-columns: 1fr; }
   .bar { flex-wrap: wrap; }
 }
+
+.procarray-panel { grid-column: 1 / -1; }
+.procarray-panel table { max-width: 460px; }
