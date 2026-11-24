@@ -1,0 +1,25 @@
+{
+  "name": "PostgreSQL Development",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  // gdb needs ptrace to attach to a running backend process
+  "runArgs": [
+    "--cap-add=SYS_PTRACE",
+    "--security-opt", "seccomp=unconfined"
+  ],
+  // initdb/postgres refuse to run as root
+  "remoteUser": "dev",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools"
+      ],
+      "settings": {
+        "files.eol": "\n",
+        // don't let clang-format rewrite PostgreSQL source files on save
+        "editor.formatOnSave": false
+      }
+    }
+  }
+}

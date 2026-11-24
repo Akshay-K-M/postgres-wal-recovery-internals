@@ -407,7 +407,10 @@ def tip(info, view, run):
                 "Readers also set hint bits so later readers can skip the CLOG.",
                 "heapam_scan → HeapTupleSatisfiesMVCC → TransactionIdDidCommit")
     if v in ("CREATE", "DROP", "ALTER", "TRUNCATE"):
-        return ("DDL is WAL-logged as well (catalog records are hidden here to keep the WAL readable).", "")
+        return ("DDL is WAL-logged as well: it changes the system catalogs (pg_class, pg_attribute, pg_type and "
+                "their indexes) and commits, which takes dozens of WAL records (about a hundred for a CREATE "
+                "TABLE). To keep the panel readable they are not listed; they are "
+                "counted in \"catalog/other records hidden\" under the WAL panel.", "")
     return ("", "")
 
 
