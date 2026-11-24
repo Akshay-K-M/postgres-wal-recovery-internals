@@ -1,0 +1,32 @@
+Reopen in dev container
+
+su postgres
+export PATH=/usr/bin:/bin:/usr/local/pgsql/bin
+pg_ctl -D pg_data -l logfile start
+
+CREATE TABLE trace_test (msg text);
+SELECT pg_backend_pid();
+
+xlog.c
+XLogInsertRecord() in xlog.c line 838
+XLogWrite line 2388 in xlog.c
+
+-exec break XLogInsertRecord
+-exec break XLogWrite
+
+pg_data/pg_wal/ 
+
+
+SELECT pg_walfile_name(pg_current_wal_lsn());
+000000020000000000000003
+ls -lh pg_data/pg_wal/
+pg_waldump pg_data/pg_wal/000000020000000000000003 | head -n 30
+pg_waldump --rmname=Heap pg_data/pg_wal/000000010000000000000001 | grep -i "insert"
+strings pg_data/pg_wal/000000020000000000000003 | grep "november"
+
+SELECT pg_relation_filepath('trace_test');
+pg_waldump -b pg_data/pg_wal/000000010000000000000003 | grep -A 5 "24576"
+pg_waldump -b pg_data/pg_wal/000000010000000000000003 | grep -A 5 "rel 1663/5/24576"
+pg_waldump -b pg_data/pg_wal/00000001* | grep -A 5 "24576"
+
+SELECT pg_walfile_name(pg_current_wal_lsn());

@@ -1,0 +1,63 @@
+cmd+shift+p devcontainer
+
+./configure --enable-debug --enable-cassert
+make -j4
+make install
+
+export PATH=/usr/local/pgsql/bin:$PATH
+
+initdb -D pg_data
+pg_ctl -D pg_data -l logfile start
+
+su postgres
+export LC_ALL=C
+export PATH=/usr/local/pgsql/bin:$PATH
+pg_ctl -D pg_data -l logfile start
+
+su postgres -c "export LC_ALL=C && export PATH=/usr/local/pgsql/bin:\$PATH && pg_ctl -D pg_data -l logfile start"
+ls -lt pg_data/pg_wal/
+pg_waldump pg_data/pg_wal/000000010000000000000002 | tail -n 15
+
+
+# 1. Create a secure external folder for WAL archives
+mkdir -p /workspaces/postgresql/wal_archive
+
+# 2. Configure PostgreSQL to send WAL copies to the archive
+echo "archive_mode = on" >> pg_data/postgresql.conf
+echo "archive_command = 'cp %p /workspaces/postgresql/wal_archive/%f'" >> pg_data/postgresql.conf
+
+# 3. Restart the server to apply archive_mode (reload is not enough)
+pg_ctl -D pg_data restart
+sleep 2
+
+# 4. Take a physical Base Backup (simulating a nightly backup)
+pg_basebackup -D /workspaces/postgresql/backup_data -Fp -Xs -P
+echo "Base backup complete! Check the backup_data folder."
+
+
+
+9 NOV:
+
+inside psql: 
+
+CREATE TABLE recovery_demo (id int, note text);
+
+CHECKPOINT;
+
+INSERT INTO recovery_demo VALUES (1, 'committed before crash');
+
+SELECT * FROM recovery_demo;
+
+exit psql
+
+pg_ctl -D pg_data stop -m immediate
+
+gdb --args postgres --single -D /workspaces/postgresql/pg_data postgres
+
+break StartupXLOG
+break PerformWalRecovery
+run
+
+continue
+
+SELECT * FROM recovery_demo;

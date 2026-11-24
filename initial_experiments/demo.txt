@@ -1,0 +1,96 @@
+DEMO: Runtime transaction abort path in PostgreSQL (gdb)
+=========================================================
+T1 = left terminal (shell, then psql)     T2 = right terminal (shell, then gdb)
+Type gdb commands by hand (pasting into gdb breaks). Pasting into shell/psql is fine.
+
+
+0. WINDOWS POWERSHELL (only if PC/WSL was restarted since last time)
+   wsl -u root sh -c "echo 0 > /proc/sys/kernel/yama/ptrace_scope"
+
+
+1. VS CODE: open the dev container, Terminal > New Terminal (T1), then click Split (T2)
+
+
+2. T1 (shell): start server, create database
+   export PATH=$HOME/pgsql/bin:$PATH
+   cat /proc/sys/kernel/yama/ptrace_scope              -> must print 0
+   pg_ctl -D ~/pgdata -l ~/pgdata/logfile start
+   dropdb --if-exists demo
+   createdb demo
+   psql demo
+
+
+3. T1 (psql): create table, get backend PID
+   CREATE TABLE accounts(id int, balance int);
+   INSERT INTO accounts VALUES (1,100),(2,200);
+   SELECT pg_backend_pid();                            -> note PID
+   SELECT pg_current_wal_lsn();                        -> note START_LSN
+
+
+4. T2 (shell): attach gdb to that backend
+   export PATH=$HOME/pgsql/bin:$PATH
+   gdb -p <PID> -x /workspaces/postgresql/demo/demo.gdb
+   (gdb) c
+
+
+5. DEMO A: explicit ROLLBACK
+   T1 (psql):
+     BEGIN;
+     INSERT INTO accounts VALUES (3,300);
+     SELECT pg_current_xact_id();                      -> note XID_A
+     ROLLBACK;                                         -> hangs (backend stopped)
+   T2 (gdb): type c at each stop
+     UserAbortTransactionBlock   TBLOCK_INPROGRESS
+     AbortTransaction            TBLOCK_ABORT_PENDING, from CommitTransactionCommandInternal
+     RecordTransactionAbort      XID_A
+     XactLogAbortRecord
+     TransactionIdAbortTree      prints abort WAL record start/end LSN
+     TransactionIdSetStatusBit   status = 2 (ABORTED), full call chain
+     CleanupTransaction          TRANS_ABORT
+   T1: prints ROLLBACK
+
+
+6. DEMO B: failing statement (divide by zero)
+   T1 (psql):
+     BEGIN;
+     INSERT INTO accounts VALUES (4,400);
+     SELECT pg_current_xact_id();                      -> note XID_B
+     SELECT 1/0;                                       -> hangs
+   T2 (gdb): type c at each stop
+     int4div                     called from the planner (evaluate_function)
+     AbortCurrentTransaction     TBLOCK_INPROGRESS, from PostgresMain error handler
+     AbortTransaction            from AbortCurrentTransactionInternal
+     RecordTransactionAbort      XID_B
+     XactLogAbortRecord
+     TransactionIdAbortTree      abort WAL record LSN
+     TransactionIdSetStatusBit   status = 2
+     (NO CleanupTransaction here)
+   T1: ERROR: division by zero
+   T1 (psql):
+     ROLLBACK;
+   T2 (gdb): type c at each stop
+     UserAbortTransactionBlock   TBLOCK_ABORT
+     CleanupTransaction          TBLOCK_ABORT_END   (no AbortTransaction, no WAL)
+   T1: prints ROLLBACK
+
+
+7. T2 (gdb): detach
+   Ctrl+C
+   (gdb) quit
+
+
+8. PROOF
+   T1 (psql):
+     SELECT pg_xact_status('<XID_A>'), pg_xact_status('<XID_B>');   -> aborted | aborted
+     SELECT * FROM accounts;                                        -> only rows 1, 2
+     CREATE EXTENSION pageinspect;
+     SELECT lp, t_xmin, (t_infomask & 512) <> 0 AS xmin_aborted
+       FROM heap_page_items(get_raw_page('accounts', 0));          -> 4 rows; rows 3,4 still on page, xmin_aborted = t
+   T2 (shell):
+     pg_waldump -p ~/pgdata/pg_wal -s <START_LSN> 2>/dev/null | grep -E "tx: +(<XID_A>|<XID_B>),"
+                                                                    -> per xid: Heap INSERT, then Transaction ABORT
+
+
+9. END
+   T1 (psql):  \q
+   T1 (shell): pg_ctl -D ~/pgdata stop
