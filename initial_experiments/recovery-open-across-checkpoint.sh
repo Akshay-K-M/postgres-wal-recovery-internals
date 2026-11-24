@@ -1,10 +1,10 @@
 #!/bin/sh
 # E: Crash with an open transaction that spans a checkpoint.
 set -eu
-export PATH=/usr/local/pgsql/bin:$PATH
+export PATH=$HOME/pgsql/bin:$PATH
 export LC_ALL=C
 
-# Run as the postgres OS user. A fresh cluster and a private socket keep
+# Run as a normal (non-root) user. A fresh cluster and a private socket keep
 # this demo separate from any existing server. No TCP listener is opened.
 lab=$(mktemp -d /tmp/pg-recovery-demo.XXXXXX)
 data="$lab/data"

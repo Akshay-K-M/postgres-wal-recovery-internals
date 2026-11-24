@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Set environment for the postgres user
+# Use the debug build installed by setup.sh
 export LC_ALL=C
-export PATH=/usr/local/pgsql/bin:$PATH
+export PATH=$HOME/pgsql/bin:$PATH
 
 # echo "--- 1. Setting up deep logging ---"
 # echo "log_checkpoints = on" >> pg_data/postgresql.conf
