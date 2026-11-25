@@ -440,7 +440,15 @@ class Run:
     def _fetch_wal(self, flush):
         if self.wal_end is None or flush is None or flush <= self.wal_end:
             return
-        rows = self.cluster.query_json(WAL_SQL, {"from": L(self.wal_end), "to": L(flush)}) or []
+        try:
+            rows = self.cluster.query_json(WAL_SQL, {"from": L(self.wal_end), "to": L(flush)}) or []
+        except RuntimeError as e:
+            # The WAL writer flushes whole WAL pages, so the flush point can fall inside a
+            # record. If the first new record is only partly flushed, pg_walinspect finds no
+            # complete record and errors out: nothing new to show yet, try again next step.
+            if "could not find a valid record" in str(e):
+                return
+            raise
         before = len(self.wal)
         for r in rows:
             self._add_wal(r)
