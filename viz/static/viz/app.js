@@ -118,7 +118,9 @@ function renderTables(v) {
         const vals = t.cols.map((_, i) => `<td class="val">${r.values ? esc(r.values[i] ?? "NULL") : "?"}</td>`).join("");
         const vis = r.visible === true ? '<span class="vis-yes">✓</span>' : r.visible === false ? '<span class="vis-no">–</span>' : '<span class="vis-no">·</span>';
         const w = r.wal && CHIP_WAL[r.wal] && !["removed", "redirect"].includes(r.status) ? `<span class="chip ${CHIP_WAL[r.wal][0]}" title="${CHIP_WAL[r.wal][1]}">WAL</span>` : "";
-        const d = CHIP_DISK[r.file] ? `<span class="chip ${CHIP_DISK[r.file][0]}" title="${CHIP_DISK[r.file][2]}">DISK</span>` : "";
+        // "no" = not in the table file: orange like the legend if the row is in memory, grey if it only exists in WAL
+        const dcls = r.file === "no" && r.status !== "ghost" ? "pend" : (CHIP_DISK[r.file] || [])[0];
+        const d = CHIP_DISK[r.file] ? `<span class="chip ${dcls}" title="${CHIP_DISK[r.file][2]}">DISK</span>` : "";
         const who = r.xmax ? txChip(r.xmin, v.labels) + " " + txChip(r.xmax, v.labels) : txChip(r.xmin, v.labels);
         return `<tr class="${r.status} ${r.chg ? "chg-" + r.chg : ""}">
           <td class="slot">${r.lp}</td>${vals}<td>${who}</td><td class="st">${esc(r.text)}</td>
