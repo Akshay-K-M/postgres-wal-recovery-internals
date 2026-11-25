@@ -87,7 +87,7 @@ def parse(text):
 
 
 EXAMPLE = """\
--- One table, five transactions, a checkpoint, a crash, then VACUUM.
+-- One table, four transactions, a checkpoint, a crash, then VACUUM.
 CREATE TABLE accounts (id int, owner text);
 CHECKPOINT;
 
@@ -105,21 +105,15 @@ T3: BEGIN;
 T3: INSERT INTO accounts VALUES (3, 'carol');
 T3: ROLLBACK;
 
--- T4 fails with an error, which aborts it
-T4: BEGIN;
-T4: INSERT INTO accounts VALUES (4, 'dave');
-T4: SELECT 1/0;
-T4: ROLLBACK;
-
 -- The checkpoint writes the page to disk, committed or not
 CHECKPOINT;
 
 T2: INSERT INTO accounts VALUES (5, 'erin');
 
--- T5 commits after the checkpoint (this also flushes T2's WAL)
-T5: BEGIN;
-T5: INSERT INTO accounts VALUES (6, 'frank');
-T5: COMMIT;
+-- T4 commits after the checkpoint (this also flushes T2's WAL)
+T4: BEGIN;
+T4: INSERT INTO accounts VALUES (6, 'frank');
+T4: COMMIT;
 
 crash
 
