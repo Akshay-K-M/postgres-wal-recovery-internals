@@ -87,13 +87,19 @@ def clog_view(run, state, prev):
     for xid in sorted(state["clog"]):
         c = state["clog"][xid]
         t = tx(run, xid)
-        disk = {"code": CODE[c["disk"]], "text": BITS[c["disk"]]}
+        # 00 in pg_xact only means "nothing written yet": status bits reach the file at a checkpoint
+        disk = ({"code": CODE[c["disk"]], "text": BITS[c["disk"]]} if c["disk"]
+                else {"code": "--", "text": "not written yet"})
         if state["server"] == "down":
             mem = None
         elif state["server"] == "recovering":
             raw = c.get("raw")
-            mem = ({"code": CODE[raw], "text": BITS[raw]} if raw is not None
-                   else {"code": "··", "text": "not loaded yet", "note": "read from pg_xact when needed"})
+            if raw is None:
+                mem = {"code": "··", "text": "not loaded yet", "note": "read from pg_xact when needed"}
+            elif raw == 0:          # raw 00 in memory: nothing has set this xid's bits
+                mem = {"code": "--", "text": "not written yet"}
+            else:
+                mem = {"code": CODE[raw], "text": BITS[raw]}
         else:
             s = c["mem"] or BITS[c["disk"]]
             if s == "aborted" and xid in run.orphans:
@@ -102,7 +108,7 @@ def clog_view(run, state, prev):
             else:
                 mem = {"code": CODE[STATUS_BITS.get(s, 0)], "text": s}
         e = dict(t, mem=mem, disk=disk)
-        e["lag"] = bool(mem and mem["code"] not in (disk["code"], "··") and not mem.get("crashed"))
+        e["lag"] = bool(mem and mem["code"] not in (CODE[c["disk"]], "··", "--") and not mem.get("crashed"))
         p = pv.get(xid)
         e["chg"] = prev is not None and (p is None or p.get("mem") != mem or p.get("disk") != disk)
         out.append(e)

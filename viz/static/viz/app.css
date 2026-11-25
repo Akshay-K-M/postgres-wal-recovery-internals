@@ -173,6 +173,8 @@ table.clog { width: 100%; border-collapse: collapse; font-size: 13px; }
 .cell.inprog .bits i { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
 .cell.crashed .bits i { background: var(--warn-bg); border-color: var(--bad); color: var(--warn); }
 .cell.crashed small { color: var(--bad); }
+.cell.unwritten .bits i { background: transparent; border-style: dashed; color: var(--faint); }
+.cell.unwritten small { color: var(--faint); }
 .cell.gone { color: var(--faint); font-style: italic; }
 .lag { color: var(--warn) !important; }
 

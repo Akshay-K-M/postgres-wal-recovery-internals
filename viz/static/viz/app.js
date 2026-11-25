@@ -159,7 +159,7 @@ function renderWal(v) {
 
 function cell(x, kind) {
   if (!x) return `<td class="cell gone">${kind === "mem" ? "wiped" : "—"}</td>`;
-  const k = x.crashed ? "crashed" : x.text === "committed" ? "committed" : x.text === "aborted" ? "aborted" : x.text === "in progress" ? "inprog" : "";
+  const k = x.crashed ? "crashed" : x.text === "committed" ? "committed" : x.text === "aborted" ? "aborted" : x.text === "in progress" ? "inprog" : x.text === "not written yet" ? "unwritten" : "";
   return `<td class="cell ${k}"><span class="bits"><i>${esc(x.code[0])}</i><i>${esc(x.code[1])}</i></span>
     <small>${esc(x.text)}${x.note ? " · " + esc(x.note) : ""}</small></td>`;
 }
