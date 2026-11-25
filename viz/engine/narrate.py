@@ -87,8 +87,9 @@ def clog_view(run, state, prev):
     for xid in sorted(state["clog"]):
         c = state["clog"][xid]
         t = tx(run, xid)
-        # 00 in pg_xact only means "nothing written yet": status bits reach the file at a checkpoint
-        disk = ({"code": CODE[c["disk"]], "text": BITS[c["disk"]]} if c["disk"]
+        # until the xid's pg_xact page has been written (e.g. by a checkpoint), its 00 there is
+        # just the zero the page started with, not a status anyone wrote
+        disk = ({"code": CODE[c["disk"]], "text": BITS[c["disk"]]} if c["disk"] or c.get("disk_written")
                 else {"code": "--", "text": "not written yet"})
         if state["server"] == "down":
             mem = None

@@ -87,6 +87,8 @@ class Run:
         self.pending = []          # derived records for unflushed WAL (by step)
         self.lost = []             # pending records lost in a crash
         self.abort_xids = set()
+        self.clog_seen = {}        # xid -> its pg_xact page bytes when first seen
+        self.clog_written = set()  # xids whose pg_xact page has been written since then
         self.orphans = set()       # xids that were in progress at a crash
         self.cache = {}            # (table, blk, lp, xmin) -> values
         self.eor_redos = set()
@@ -391,7 +393,8 @@ class Run:
 
     def _clog(self, xids, mem):
         xids = sorted(int(x) for x in xids if int(x) >= 3)
-        res = {x: {"mem": None, "raw": None, "disk": self._clog_disk(x)} for x in xids}
+        res = {x: {"mem": None, "raw": None, "disk": self._clog_disk(x),
+                   "disk_written": self._clog_page_written(x)} for x in xids}
         if mem and xids:
             # an xid whose WAL never reached disk is "in the future" after a crash
             q = ("SELECT json_object_agg(x, CASE WHEN x::text::xid8 < pg_snapshot_xmax(pg_current_snapshot()) "
@@ -400,6 +403,27 @@ class Run:
             for k, v in (self.cluster.query_json(q) or {}).items():
                 res[int(k)]["mem"] = v
         return res
+
+    def _clog_page_written(self, xid):
+        """True once the pg_xact page holding xid has been written since we first saw xid.
+
+        PostgreSQL writes a CLOG page only when it is dirty, so a write shows up as a change
+        in the page's bytes on disk (or the page appearing in the file)."""
+        if xid in self.clog_written:
+            return True
+        per_seg = 8192 * 4 * 32
+        path = os.path.join(self.cluster.data, "pg_xact", "%04X" % (xid // per_seg))
+        try:
+            with open(path, "rb") as f:
+                f.seek(((xid % per_seg) // (8192 * 4)) * 8192)
+                page = f.read(8192)
+        except OSError:
+            page = None
+        first = self.clog_seen.setdefault(xid, page)
+        if page != first:
+            self.clog_written.add(xid)
+            return True
+        return False
 
     def _clog_disk(self, xid):
         per_seg = 8192 * 4 * 32
